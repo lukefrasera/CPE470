@@ -1,0 +1,13 @@
+task main()
+{
+     OnFwd(OUT_A, 50);
+     Wait(2000);
+     PlayTone(500,500);
+     OnFwd(OUT_A, -50);
+     Wait(2000);
+     PlayTone(500,500);
+     OnFwd(OUT_A, 0);
+     Wait(2000);
+     OnFwd(OUT_A, 100);
+     Wait(3000);
+}
