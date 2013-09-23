@@ -1,0 +1,82 @@
+
+#include "RFIDlib.nxc"
+// tunnel traveler Program
+
+#define PORT IN_3
+mutex moveMutex;
+
+bool isturned = false;
+
+void moveLeftSideM(){
+    OnFwd(OUT_A,100);
+    OnFwd(OUT_B,70);
+    Wait(200);
+}
+
+void moveRightSideM(){
+    OnFwd(OUT_B,100);
+    OnFwd(OUT_A,70);
+    Wait(200);
+}
+
+void turnaround(){
+     OnFwd(OUT_B,100);
+     OnFwd(OUT_A,-100);
+     Wait(400);
+}
+
+task moveBothSideM(){
+    while(true){
+    	  Acquire(moveMutex);
+        OnFwd(OUT_AB,100);
+        Release(moveMutex);
+    }
+}
+
+task check_sensor(){
+     while(true){
+     	   int dist = SensorUS(IN_1) - SensorUS(IN_4);
+         short gap = 5;
+         if(dist < -gap)
+         {
+            Acquire(moveMutex);
+            moveLeftSideM();
+            Release(moveMutex);
+         }
+         if(dist > gap){
+            Acquire(moveMutex);
+            moveRightSideM();
+            Release(moveMutex);
+         }
+     }
+     
+}
+
+task check_RFID(){
+     // send dummy command to wake up sensor
+     RFIDDummy(PORT);
+     byte a[5];
+     
+
+     
+     while(!isturned){
+         GetRFIDArray(PORT,a,true);
+         //ClearScreen();
+         
+         //NumOut(0,LCD_LINE1,10*(a[0]+a[1]+a[2]+a[3]+a[4]));
+         if((a[0]+a[1]+a[2]+a[3]+a[4]) > 0){
+             Acquire(moveMutex);
+             turnaround();
+             Release(moveMutex);
+             isturned = true;
+             PlayTone(1200,1500);
+         }
+     }
+}
+
+task main(){
+	SetSensorLowspeed(IN_1);
+	SetSensorLowspeed(IN_4);
+	SetSensorLowspeed(PORT);
+	Precedes(check_RFID, check_sensor, moveBothSideM);
+}
