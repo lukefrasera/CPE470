@@ -1,0 +1,278 @@
+#include "RFIDlib.nxc"
+// Food Finder Program
+
+#define PORT1 IN_3
+#define PORT2 IN_2
+mutex moveMutex;
+
+bool isturned = false;
+bool findHome = false;
+int THRESHOLD = 10;
+int BLACK = 0;
+int ColorCounter = 0;
+int IDCounter = 0;
+bool wall = false;
+bool direction = false;
+
+// function to do a turn to avoid a wall to the left
+void turnaroundLeft(){
+     OnFwd(OUT_B,-100);
+     OnFwd(OUT_A,20);
+     Wait(550);
+     OnFwd(OUT_AB, 100);
+     Wait(400);
+}
+
+// function to do a turn to avoid a wall to the left, on its route home
+void turnaroundLeftHome(){
+     OnFwd(OUT_B,-100);
+     OnFwd(OUT_A,20);
+     Wait(400);
+     OnFwd(OUT_AB, 100);
+     Wait(200);
+}
+
+// function to do a turn to avoid a wall to the right
+void turnaroundRight(){
+     OnFwd(OUT_B,20);
+     OnFwd(OUT_A,-100);
+     Wait(550);
+     OnFwd(OUT_AB, 100);
+     Wait(400);
+}
+
+// function to do a turn to avoid a wall to the right, on its route home
+void turnaroundRightHome(){
+     OnFwd(OUT_B,20);
+     OnFwd(OUT_A,-100);
+     Wait(400);
+     OnFwd(OUT_AB, 100);
+     Wait(200);
+}
+
+// In case of getting stuck or sensor malfunction, perform a random turn
+void randomTurn(){
+    int num = Random(30) + 50;
+    OnFwd(OUT_B, -num);
+    num = Random(30) + 50;
+    OnFwd(OUT_A, num);
+    Wait(400);
+}
+
+// Find the wall at the end of search period
+void goWall(){
+   int left = SensorUS(IN_4);
+   int right = SensorUS(IN_1);
+
+   while(1){
+     int left = SensorUS(IN_4);
+     int right = SensorUS(IN_1);
+     if(right < 15){
+       break;
+     }
+     if(left < 15){
+       break;
+     }
+     OnFwd(OUT_B, 100);
+     OnFwd(OUT_A, 95);
+     Wait(200);
+   }
+   if(right < 15){
+    direction = false; // follow right side
+   }
+   else{
+     direction = true; // follow left side
+   }
+}
+
+// Turn right to follow the wall in find home routine
+void goRight(){
+  while(1){
+   int left = SensorUS(IN_4);
+   int right = SensorUS(IN_1);
+   int in = 20;
+   int out = 25;
+
+   if(right < in){ // turn slightly left
+     OnFwd(OUT_B, 30);
+     OnFwd(OUT_A, 70);
+     Wait(100);
+   }
+   if(right > out){  // turn slightly right
+     OnFwd(OUT_B, 70);
+     OnFwd(OUT_A, 10);
+     Wait(200);
+   }
+   if(right < in && left < in){ // turn around
+     turnaroundLeftHome();
+   }
+   else{
+     OnFwd(OUT_B, 80);
+     OnFwd(OUT_A, 80);
+     Wait(300);
+   }
+  }
+}
+
+// Turn left to follow the wall in find home routine
+void goLeft(){
+  while(1){
+   int left = SensorUS(IN_4);
+   int right = SensorUS(IN_1);
+   int in = 20;
+   int out = 25;
+
+   if(right < in){ // turn slightly left
+     OnFwd(OUT_A, 30);
+     OnFwd(OUT_B, 70);
+     Wait(100);
+   }
+   if(right > out){  // turn slightly right
+     OnFwd(OUT_A, 70);
+     OnFwd(OUT_B, 10);
+     Wait(200);
+   }
+   if(right < in && left < in){ // turn around
+     turnaroundRightHome();
+   }
+   else{
+     OnFwd(OUT_A, 80);
+     OnFwd(OUT_B, 80);
+     Wait(300);
+   }
+  }
+}
+
+// This task moves the robot in a "straight" line during searching
+task moveBothSideM(){
+    while(findHome == false){
+     Acquire(moveMutex);
+     OnFwd(OUT_A, 75);
+     OnFwd(OUT_B, 20);
+     Wait(250);
+     OnFwd(OUT_B, 70);
+     OnFwd(OUT_A, 25);
+     Wait(250);
+     Release(moveMutex);
+    }
+}
+
+// controls sensor input processing
+task check_sensor(){
+     while( findHome == false ){
+        int left = SensorUS(IN_1);
+        int right = SensorUS(IN_4);
+         short gap = 10;
+         if(left < gap)
+         {
+            Acquire(moveMutex);
+            turnaroundLeft();
+            Release(moveMutex);
+         }
+         if(right < gap){
+            Acquire(moveMutex);
+            turnaroundRight();
+            Release(moveMutex);
+         }
+         if(right < gap && left < gap){
+            Acquire(moveMutex);
+            randomTurn();
+            Release(moveMutex);
+         }
+     }
+     while(findHome == true){
+        int left = SensorUS(IN_4);
+        int right = SensorUS(IN_1);
+        
+        // get to side
+        Acquire(moveMutex);
+        goWall();
+        Release(moveMutex);
+        
+        if(direction == false){ // right
+          Acquire(moveMutex);
+          goRight();
+          Release(moveMutex);
+        }
+        else{ // left
+          Acquire(moveMutex);
+          goLeft();
+          Release(moveMutex);
+        }
+    }
+
+}
+
+// Continuously checks for food
+task check_COLOR(){
+     // send dummy command to wake up sensor
+     RFIDDummy(PORT1);
+     byte a[5];
+
+     while(findHome == false){
+         GetRFIDArray(PORT1,a,true);
+         //ClearScreen();
+
+         //NumOut(0,LCD_LINE1,10*(a[0]+a[1]+a[2]+a[3]+a[4]));
+         if((a[0]+a[1]+a[2]+a[3]+a[4]) > 0){
+             PlayTone(1200,300);
+            IDCounter = IDCounter + 1;
+            NumOut(1, LCD_LINE6, IDCounter);
+         }
+         else if(SensorHTColorNum(PORT2) < THRESHOLD){
+            ClearScreen();
+            ColorCounter = ColorCounter + 1;
+            NumOut(1, LCD_LINE6, ColorCounter);
+            PlayTone(1200,300);
+         }
+     }
+     while(findHome == true){
+        if(SensorHTColorNum(PORT2) == BLACK){
+            ClearScreen();
+            PlayTone(1200,300);
+            Acquire(moveMutex);
+            OnFwd(OUT_AB, 0);
+            Wait(300);
+            Release(moveMutex);
+            TextOut(2, LCD_LINE6, "FOUND HOME" );
+            StopAllTasks();
+        }
+     }
+}
+
+// timer task which calls the random function every 15 seconds
+task timer(){
+    Wait(15000);
+    Acquire(moveMutex);
+    randomTurn();
+    Release(moveMutex);
+    Wait(15000);
+    Acquire(moveMutex);
+    randomTurn();
+    Release(moveMutex);
+    Wait(15000);
+    Acquire(moveMutex);
+    randomTurn();
+    Release(moveMutex);
+    Wait(15000);
+    Acquire(moveMutex);
+    randomTurn();
+    Release(moveMutex);
+    findHome = true;
+    ClearScreen();
+    TextOut(1, LCD_LINE1, "FINDING HOME...");
+    while(1){
+      Wait(100);
+    }
+}
+
+
+task main(){
+SetSensorLowspeed(IN_1);
+SetSensorLowspeed(IN_4);
+SetSensorLowspeed(PORT1);
+SetSensorLowspeed(PORT2);
+SetHTColor2Mode(PORT2, HT_CMD_COLOR2_NEAR);
+Precedes(timer, check_COLOR, moveBothSideM, check_sensor);
+}
+
