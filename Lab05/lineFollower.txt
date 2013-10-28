@@ -1,0 +1,177 @@
+
+#include "HTSMUX-driver.h"
+
+#define LIGHT_PORT_1 msensor_S3_1
+#define LIGHT_PORT_2 msensor_S3_2
+#define COLOR_PORT msensor_S3_3
+#define SOUND_PORT IN_2
+
+mutex moveMutex;
+bool findHome = false;
+float A_SPEED = 1;
+float B_SPEED = .9;
+int BLACKL = 350;
+int BLACKR = 400;
+int threshold = 90;
+bool lineFound = false;
+int BLACKLINE = 4;
+bool seenBlack = false;
+
+
+/*////////////////////////
+      FIND LINE
+*/////////////////////////
+
+task find_line(){
+  Acquire(moveMutex);
+  while(lineFound == false){
+    OnFwd(OUT_A, 60*A_SPEED);
+    OnFwd(OUT_B, 60*B_SPEED);
+    ClearScreen();
+    int color =  smuxSensorHTColorNum(COLOR_PORT);
+    NumOut(0, LCD_LINE4, color);
+    Wait(100);
+    if(color <= BLACKLINE && seenBlack == true){
+      lineFound = true;
+    }
+    if(color <= BLACKLINE && seenBlack == false){
+       seenBlack = true;
+    }
+
+  }
+  Release(moveMutex);
+}
+
+/*////////////////////////
+      LINE FOLLOW
+OUR STRATEGY: 
+  Keep turn towards the line
+when you see the line. If 
+both see the line, do a sweeping
+turn right
+*/////////////////////////
+
+
+void moveLeftSideM(){
+    OnFwd(OUT_A,60*A_SPEED);
+    OnFwd(OUT_B,20*B_SPEED);
+    Wait(120);
+}
+
+void moveRightSideM(){
+    OnFwd(OUT_B,60*B_SPEED);
+    OnFwd(OUT_A,20*A_SPEED);
+    Wait(120);
+}
+void slowTurnRight(){
+    OnFwd(OUT_B,50*B_SPEED);
+    OnFwd(OUT_A,30*A_SPEED);
+    Wait(200);
+    
+}
+
+void turnaround(){
+     OnFwd(OUT_B,90*B_SPEED);
+     OnFwd(OUT_A,-90*A_SPEED);
+     Wait(400);
+}
+
+void moveBothSideM(){
+   OnFwd(OUT_B, 100*B_SPEED);
+   OnFwd(OUT_A, 100*A_SPEED);
+   Wait(300);
+}
+// turn around quickly until a noise then go at full speed that way
+task find_home(){
+     while(true){
+         if(findHome == true){
+               // input soundvalue
+               
+               if(Sensor(SOUND_PORT) > threshold){//need varibles
+                  Acquire(moveMutex);
+                  moveBothSideM();
+                  Release(moveMutex);
+               }
+               else{
+                    Acquire(moveMutex);
+                    turnaround();
+                    Release(moveMutex);
+               }
+         }
+     }
+}
+
+// Checking sensors for seeing the line
+
+task check_line(){
+     bool turn = false;
+
+     while(findHome==false){
+         ClearScreen();
+         int right = smuxSensorLegoLightRaw(LIGHT_PORT_1);
+         NumOut(0, LCD_LINE1, right);
+         int left = smuxSensorLegoLightRaw(LIGHT_PORT_2);
+         NumOut(0, LCD_LINE2, left);
+
+         /*if(right > BLACKR && left > BLACKL){
+             Acquire(moveMutex);
+             slowTurnRight();
+             Release(moveMutex);
+         }
+         else if(right > BLACKL)
+         {
+            Acquire(moveMutex);
+            moveLeftSideM();
+            Release(moveMutex);
+         }
+         else if(left > BLACKR){
+            Acquire(moveMutex);
+            moveRightSideM();
+            Release(moveMutex);
+         }*/
+        if(right < BLACKR && left < BLACKL){
+            turn = true;
+        }
+         if(turn==true){
+             if(right < BLACKR){
+                 Acquire(moveMutex);
+                 moveRightSideM();
+                 Release(moveMutex);
+                 turn=false;
+             }
+         }
+         else{
+             if(left < BLACKL){
+                 Acquire(moveMutex);
+                 moveLeftSideM();
+                 Release(moveMutex);
+                 turn=true;
+             }
+
+         }
+         int colorVal = smuxSensorHTColorNum(COLOR_PORT);
+         if(colorVal > 4 && colorVal < 8){
+             findHome = true;
+             PlayTone(1500, 1000);
+             Wait(1000);
+             TextOut(0, LCD_LINE4, "FINDING HOME" );
+         }
+
+     }
+
+}
+
+task main(){
+    SetSensor(S3, SENSOR_LOWSPEED);
+    SetSensorSound(SOUND_PORT);
+    if (!HTSMUXscanPorts(S3)) {
+       // Scan failed, handle the error
+       TextOut(0, LCD_LINE1, "Scan failed!");
+       Wait(1000);
+    }
+    smuxSetSensorLegoLight(LIGHT_PORT_1, true);
+    smuxSetSensorLegoLight(LIGHT_PORT_2, true);
+    
+	  Precedes(find_line, check_line, find_home);
+  
+}
