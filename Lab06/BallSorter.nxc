@@ -1,0 +1,101 @@
+﻿#define COLOR IN_4
+
+
+
+
+mutex moveMutex;
+
+
+
+
+void find_black(){
+  int sonar = SensorUS(IN_1);
+  Acquire(moveMutex);
+  while( sonar > 10){
+    while(SensorHTCompass(IN_1) >= 180 && SensorHTCompass(IN_1) < 350){
+      OnFwd(OUT_A, 20);
+      OnFwd(OUT_B, 80);
+      Wait(300);
+    }
+    while(SensorHTCompass(IN_1) >= 180 && SensorHTCompass(IN_1) < 350){
+      OnFwd(OUT_A, 80);
+      OnFwd(OUT_B, 20);
+    }
+  }
+  Release(moveMutex);
+}
+void find_right_wall()
+{
+     int sonar = SensorUS(IN_1);
+     find_black();
+    while(sonar < 10){
+      OnFwd(OUT_B,-50);
+      OnFwd(OUT_A,30);
+      Wait(200);
+    }
+   // move_along_wall();
+
+
+}
+
+
+task move(){
+  find_black();
+   int sonar = SensorUS(IN_1);
+  while(1){
+    if( sonar < 10){
+       OnFwd(OUT_B,-50);
+      OnFwd(OUT_A,30);
+      Wait(200);
+    }
+  }
+}
+//void check_color()
+
+
+// The ball lift function will change the speed of lift depending on color of ball
+// this is how the ball will go right or left on the robot
+task detect_ball_lift()
+{
+    while(true){
+        unsigned int color = SensorHTColorNum(COLOR);
+        ClearScreen();
+        if(color == 9){
+            NumOut(0, LCD_LINE2, color);
+            Acquire(moveMutex);
+            OnFwd(OUT_AB, 0);
+            OnFwd(OUT_C, 100);
+            Wait(205);
+            Off(OUT_C);
+            Wait(300);
+            OnFwd(OUT_C, -50);
+            Wait(500);
+            Off(OUT_C);
+            Release(moveMutex);
+        }
+        else if(color == 2){
+            Acquire(moveMutex);
+            OnFwd(OUT_AB, 0);
+            OnFwd(OUT_C, 25);
+            Wait(1100);
+            Off(OUT_C);
+            Wait(100);
+            OnFwd(OUT_C, -25);
+            Wait(1100);
+            Off(OUT_C);
+            Release(moveMutex);
+        }
+        NumOut(0, LCD_LINE1, color);
+    }
+}
+
+
+
+
+task main(){
+    SetSensorLowspeed(IN_3);
+    SetSensorLowspeed(IN_4);
+    SetHTColor2Mode(IN_4, HT_CMD_COLOR2_NEAR);
+    SetSensorLowspeed(IN_1);
+    Precedes(detect_ball_lift, move);
+}
