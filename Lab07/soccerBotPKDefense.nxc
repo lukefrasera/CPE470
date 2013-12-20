@@ -1,0 +1,80 @@
+
+// Soccer Player Bot
+
+#define PORT2 IN_2 // Compass Sensor
+#define INFR IN_1 // Infared sensor
+#define TOUCH IN_3
+mutex moveMutex;
+
+int compVal;
+int compScore;
+byte dir, s1, s2, s3, s4, s5;
+float direction;
+bool kicked = false;
+
+// take "other goal" compass measurement
+void initCompass(){
+   compScore = SensorHTCompass(IN_2);
+   compScore -= 90;
+}
+
+// search for ball
+task navigate(){
+
+  initCompass();
+
+  while( true ){
+    ClearScreen();
+    compVal = SensorHTCompass(IN_2);
+    //NumOut(0, LCD_LINE2, compVal);
+    //NumOut(0, LCD_LINE3, compScore);
+    ReadSensorHTIRSeeker2AC(INFR, dir, s1, s2, s2, s4, s5);
+    direction = dir;
+
+    Wait(100);
+  }
+}
+
+void move_IR( float x){
+    int A,B;
+    if(x <= -1 || x >=1){
+        B = -100;
+        A = -100;
+    }
+    else if(x == 8){
+        B = 0;
+        A = 0;
+    }
+    else{
+        B = 100;
+        A = 100;
+    }
+    
+    OnFwd(OUT_A, A);
+    OnFwd(OUT_B, B);
+    Wait(100);
+}
+
+task move(){
+    float norm_dir = 0.0;
+    float strength;
+    while(true){
+        strength = (s1 + s2 + s3 + s4 + s5);
+        if(strength < 300.0){
+            norm_dir = (dir - 5)/4;
+        }
+        Acquire(moveMutex);
+        norm_dir = (direction - 5.0)/4.0;
+        move_IR(norm_dir);
+        Release(moveMutex);
+    }
+}
+
+task main(){
+    SetSensorLowspeed(INFR);     // infared
+    SetSensorLowspeed(IN_2);     // compass
+    SetSensorTouch( IN_3 );  // TOUCH
+
+    Precedes(navigate, move);
+}
+
